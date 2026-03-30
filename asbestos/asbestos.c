@@ -196,6 +196,18 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
             if (block == NULL) {
                 block = fiber_block_compile(ip, tlb);
                 fiber_insert(asbestos, block);
+                // Clear write TLB entries for the block's pages so that
+                // future writes (e.g., V8 JIT rewriting code) cause a TLB
+                // miss and trigger JIT cache invalidation in tlb_handle_miss.
+                struct tlb_entry *te = &tlb->entries[TLB_INDEX(ip)];
+                if (te->page_if_writable == TLB_PAGE(ip))
+                    te->page_if_writable = TLB_PAGE_EMPTY;
+                if (PAGE(block->addr) != PAGE(block->end_addr)) {
+                    addr_t end = block->end_addr & 0xfffff000;
+                    te = &tlb->entries[TLB_INDEX(end)];
+                    if (te->page_if_writable == TLB_PAGE(end))
+                        te->page_if_writable = TLB_PAGE_EMPTY;
+                }
             } else {
                 TRACE("%d %08x --- missed cache\n", current_pid(), ip);
             }

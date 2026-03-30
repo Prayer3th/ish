@@ -1,5 +1,6 @@
 #include "emu/cpu.h"
 #include "emu/tlb.h"
+#include "asbestos/asbestos.h"
 
 void tlb_refresh(struct tlb *tlb, struct mmu *mmu) {
     if (tlb->mmu == mmu && tlb->mem_changes == mmu->changes)
@@ -57,6 +58,13 @@ __no_instrument void *tlb_handle_miss(struct tlb *tlb, addr_t addr, int type) {
         return NULL;
     }
     tlb->dirty_page = TLB_PAGE(addr);
+
+    // When populating a write TLB entry, invalidate any JIT-compiled blocks
+    // for this page. This handles self-modifying code (e.g., V8's JIT writing
+    // new machine code to previously executed pages). Without this, stale
+    // compiled blocks would be executed instead of the newly written code.
+    if (type == MEM_WRITE && tlb->mmu->asbestos != NULL)
+        asbestos_invalidate_page(tlb->mmu->asbestos, PAGE(addr));
 
     struct tlb_entry *tlb_ent = &tlb->entries[TLB_INDEX(addr)];
     tlb_ent->page = TLB_PAGE(addr);

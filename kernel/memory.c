@@ -193,6 +193,11 @@ int pt_set_flags(struct mem *mem, page_t start, pages_t pages, int flags) {
                 return errno_map();
         }
     }
+    // Invalidate JIT blocks for pages whose permissions changed.
+    // This is critical for V8's W^X JIT pattern: write code to RW pages,
+    // then mprotect to RX before executing. Without this, stale JIT blocks
+    // from before the code was written would be executed.
+    asbestos_invalidate_range(mem->mmu.asbestos, start, start + pages);
     mem_changed(mem);
     return 0;
 }
